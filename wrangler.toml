@@ -1,0 +1,8 @@
+name = "ip-allowlist-api"
+main = "worker.js"
+compatibility_date = "2025-01-01"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "ip-allowlist"
+database_id = "REPLACE_WITH_D1_DATABASE_ID"
