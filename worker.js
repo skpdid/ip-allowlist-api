@@ -75,8 +75,26 @@ window.editIp=(ip,expired,name)=>{$("formTitle").textContent="Edit IP";$("ip").v
 window.removeIp=async ip=>{if(!confirm("Hapus IP "+ip+"?"))return;const r=await fetch("/ips/"+encodeURIComponent(ip),{method:"DELETE",headers:{"X-API-Key":key()}});const j=await r.json();msg(j.message,!r.ok);if(r.ok)load()}
 $("form").onsubmit=async e=>{e.preventDefault();const data={ip:$("ip").value.trim(),expired:$("expired").value,name:$("name").value.trim()};const edit=state.editing;const r=await fetch(edit?"/ips/"+encodeURIComponent(edit):"/ips",{method:edit?"PATCH":"POST",headers:{"Content-Type":"application/json","X-API-Key":key()},body:JSON.stringify(edit?{expired:data.expired,name:data.name}:data)});const j=await r.json();msg(j.message|| (r.ok?"Berhasil":"Gagal"),!r.ok);if(r.ok)reset();load()}
 function reset(){$("form").reset();$("ip").disabled=false;state.editing=null;$("formTitle").textContent="Tambah IP";$("cancel").hidden=true)}
-async function login(e){e.preventDefault();const candidate=$("loginKey").value.trim();const r=await fetch("/health",{headers:{"X-API-Key":candidate}});if(!r.ok){$("loginStatus").textContent="API key tidak valid";return}state.apiKey=candidate;$("login").hidden=true;$("app").hidden=false;load()}
-$("loginForm").onsubmit=login;$("logout").onclick=()=>{state.apiKey="";$("app").hidden=true;$("login").hidden=false;$("loginKey").value=""};$("cancel").onclick=reset;$("refresh").onclick=load;$("showExpired").onclick=()=>{state.all=!state.all;$("showExpired").textContent=state.all?"Sembunyikan kedaluwarsa":"Tampilkan kedaluwarsa";load()};
+async function login(e){
+  e.preventDefault();
+  const candidate=$("loginKey").value.trim();
+  const status=$("loginStatus");
+  if(!candidate){status.textContent="API key wajib diisi";return false}
+  status.textContent="Memeriksa API key...";
+  try{
+    const r=await fetch("/health",{method:"GET",headers:{"X-API-Key":candidate},cache:"no-store"});
+    const j=await r.json().catch(()=>({}));
+    if(!r.ok || j.status!==true){status.textContent="API key tidak valid";return false}
+    state.apiKey=candidate;
+    $("login").hidden=true;
+    $("app").hidden=false;
+    await load();
+  }catch(error){status.textContent="Gagal menghubungi Worker"}
+  return false
+}
+$("loginForm").addEventListener("submit",login);
+$("logout").addEventListener("click",()=>{state.apiKey="";$("app").hidden=true;$("login").hidden=false;$("loginKey").value="";$("loginStatus").textContent=""});
+$("cancel").addEventListener("click",reset);$("refresh").addEventListener("click",load);$("showExpired").addEventListener("click",()=>{state.all=!state.all;$("showExpired").textContent=state.all?"Sembunyikan kedaluwarsa":"Tampilkan kedaluwarsa";load()});
 </script></body></html>`;
 
 async function getByIp(env, ip) {
