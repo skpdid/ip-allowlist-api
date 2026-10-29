@@ -8,11 +8,17 @@ expired  tanggal berakhir, format YYYY-MM-DD
 name     nama/keterangan pemilik IP
 ```
 
-API dilindungi secret `API_KEY` dan menggunakan Cloudflare D1 dengan binding `DB`.
+API menggunakan Cloudflare D1 dengan binding `DB`. Endpoint baca daftar publik tidak membutuhkan API key. Operasi perubahan data tetap dilindungi secret `API_KEY`.
 
 ## Endpoint
 
-Semua endpoint membutuhkan salah satu header berikut:
+Endpoint publik:
+
+- `GET /ips` — daftar IP aktif, tanpa API key.
+- `GET /ips?include_expired=1` — daftar semua IP termasuk yang kedaluwarsa, tanpa API key.
+- `GET /dashboard` — panel UI, tanpa API key untuk melihat daftar; API key diisi di form saat mengelola data.
+
+Endpoint berikut membutuhkan salah satu header:
 
 ```http
 Authorization: Bearer API_KEY
@@ -114,14 +120,39 @@ curl -X POST https://API_DOMAIN/ips \\
 
 Semua field wajib diisi. `expired` harus berupa tanggal valid dengan format `YYYY-MM-DD`.
 
-### Ambil IP aktif
+### Ambil IP aktif — publik
+
+Tidak perlu API key:
 
 ```bash
-curl https://API_DOMAIN/ips \\
-  -H 'X-API-Key: API_KEY'
+curl https://API_DOMAIN/ips
 ```
 
 Secara default, data yang tanggal `expired`-nya lebih kecil dari tanggal UTC hari ini tidak ditampilkan.
+
+Untuk semua data termasuk yang kedaluwarsa:
+
+```bash
+curl 'https://API_DOMAIN/ips?include_expired=1'
+```
+
+## Panel dashboard
+
+Buka:
+
+```text
+https://API_DOMAIN/dashboard
+```
+
+Panel menyediakan:
+
+- daftar IP aktif tanpa API key;
+- tombol menampilkan IP kedaluwarsa;
+- tambah IP;
+- edit tanggal expired dan nama;
+- hapus IP.
+
+Masukkan `API_KEY` pada field panel saat melakukan tambah, edit, atau hapus. API key tidak disimpan ke database atau URL.
 
 ### Cek satu IP
 
