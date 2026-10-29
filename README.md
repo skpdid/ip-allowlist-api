@@ -12,13 +12,13 @@ API menggunakan Cloudflare D1 dengan binding `DB`. Endpoint baca daftar publik t
 
 ## Endpoint
 
-Endpoint publik:
+Satu-satunya endpoint publik adalah:
 
 - `GET /ips` — daftar IP aktif, tanpa API key.
-- `GET /ips?include_expired=1` — daftar semua IP termasuk yang kedaluwarsa, tanpa API key.
-- `GET /dashboard` — panel UI, tanpa API key untuk melihat daftar; API key diisi di form saat mengelola data.
 
-Endpoint berikut membutuhkan salah satu header:
+Semua endpoint lain, termasuk `/dashboard`, `GET /health`, `GET /ips?include_expired=1`, `GET /ips/{ip}`, `POST`, `PATCH`, dan `DELETE`, wajib menggunakan API key.
+
+Endpoint yang dilindungi membutuhkan salah satu header:
 
 ```http
 Authorization: Bearer API_KEY
@@ -32,12 +32,12 @@ X-API-Key: API_KEY
 
 - `GET /health` — cek layanan.
 - `GET /ips` — daftar izin IP yang masih aktif.
-- `GET /ips?include_expired=1` — daftar semua data termasuk yang kedaluwarsa.
-- `GET /ips/{ip}` — mengambil satu IP dan status `active`.
-- `POST /ips` — menambah IP.
-- `PATCH /ips/{ip}` — mengubah `expired` atau `name`.
-- `DELETE /ips/{ip}` — menghapus satu IP.
-- `DELETE /ips` — menghapus semua IP.
+- `GET /ips?include_expired=1` — daftar semua IP termasuk yang kedaluwarsa; wajib API key.
+- `GET /ips/{ip}` — mengambil satu IP dan status `active`; wajib API key.
+- `POST /ips` — menambah IP; wajib API key.
+- `PATCH /ips/{ip}` — mengubah `expired` atau `name`; wajib API key.
+- `DELETE /ips/{ip}` — menghapus satu IP; wajib API key.
+- `DELETE /ips` — menghapus semua IP; wajib API key.
 
 ## Deploy
 
@@ -144,15 +144,16 @@ Buka:
 https://API_DOMAIN/dashboard
 ```
 
-Panel menyediakan:
+Panel menampilkan form login terlebih dahulu. Masukkan `API_KEY` yang disimpan sebagai Worker Secret. Setelah login berhasil, panel menyediakan:
 
-- daftar IP aktif tanpa API key;
+- daftar IP aktif;
 - tombol menampilkan IP kedaluwarsa;
 - tambah IP;
 - edit tanggal expired dan nama;
-- hapus IP.
+- hapus IP;
+- logout.
 
-Masukkan `API_KEY` pada field panel saat melakukan tambah, edit, atau hapus. API key tidak disimpan ke database atau URL.
+API key hanya disimpan di memori halaman browser dan tidak disimpan ke database, URL, atau local storage. HTML shell `/dashboard` dapat diakses untuk menampilkan form login, tetapi data panel dan operasi pengelolaan tidak dapat digunakan tanpa API key yang valid.
 
 ### Cek satu IP
 
