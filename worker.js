@@ -74,7 +74,7 @@ function esc(v){return String(v).replace(/[&<>'"]/g,c=>({"&":"&amp;","<":"&lt;",
 window.editIp=(ip,expired,name)=>{$("formTitle").textContent="Edit IP";$("ip").value=ip;$("ip").disabled=true;$("expired").value=expired;$("name").value=name;state.editing=ip;$("cancel").hidden=false;window.scrollTo({top:0,behavior:"smooth"})}
 window.removeIp=async ip=>{if(!confirm("Hapus IP "+ip+"?"))return;const r=await fetch("/ips/"+encodeURIComponent(ip),{method:"DELETE",headers:{"X-API-Key":key()}});const j=await r.json();msg(j.message,!r.ok);if(r.ok)load()}
 $("form").onsubmit=async e=>{e.preventDefault();const data={ip:$("ip").value.trim(),expired:$("expired").value,name:$("name").value.trim()};const edit=state.editing;const r=await fetch(edit?"/ips/"+encodeURIComponent(edit):"/ips",{method:edit?"PATCH":"POST",headers:{"Content-Type":"application/json","X-API-Key":key()},body:JSON.stringify(edit?{expired:data.expired,name:data.name}:data)});const j=await r.json();msg(j.message|| (r.ok?"Berhasil":"Gagal"),!r.ok);if(r.ok)reset();load()}
-function reset(){$("form").reset();$("ip").disabled=false;state.editing=null;$("formTitle").textContent="Tambah IP";$("cancel").hidden=true)}
+function reset(){$("form").reset();$("ip").disabled=false;state.editing=null;$("formTitle").textContent="Tambah IP";$("cancel").hidden=true}
 async function login(e){
   e.preventDefault();
   const candidate=$("loginKey").value.trim();
