@@ -162,6 +162,17 @@ export default {
     }
     try {
       if (url.pathname === "/ips" && request.method === "GET" && !url.search) return listIps(env, url);
+      if (request.method === "GET") {
+        const detailMatch = url.pathname.match(/^\/ips\/detail\/([^/]+)$/);
+        if (detailMatch) {
+          const ip = decodeURIComponent(detailMatch[1]);
+          if (!validIp(ip)) return response({ status: false, message: "Format IP tidak valid" }, 400);
+          const row = await getByIp(env, ip);
+          return row
+            ? response({ status: true, data: { ip: row.ip, expired: row.expired, name: row.name } })
+            : response({ status: false, message: "IP tidak ditemukan" }, 404);
+        }
+      }
       // Shell login dashboard harus dapat dibuka agar form API key bisa ditampilkan.
       // Seluruh data dan operasi panel tetap dikunci oleh API key.
       if (url.pathname === "/dashboard" && request.method === "GET") {
