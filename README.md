@@ -14,9 +14,9 @@ API menggunakan Cloudflare D1 dengan binding `DB`. Endpoint baca daftar publik t
 
 Satu-satunya endpoint publik adalah:
 
-- `GET /ips` — daftar IP aktif, tanpa API key.
+- `GET /ips` — seluruh IP yang terdaftar, termasuk yang sudah kedaluwarsa, tanpa API key.
 
-Semua endpoint lain, termasuk `/dashboard`, `GET /health`, `GET /ips?include_expired=1`, `GET /ips/{ip}`, `POST`, `PATCH`, dan `DELETE`, wajib menggunakan API key.
+Semua endpoint lain, termasuk `/dashboard` (data dan operasi panel), `GET /health`, `GET /ips/{ip}`, `POST`, `PATCH`, dan `DELETE`, wajib menggunakan API key atau session dashboard yang valid.
 
 Endpoint yang dilindungi membutuhkan salah satu header:
 
@@ -31,9 +31,11 @@ X-API-Key: API_KEY
 ```
 
 - `GET /health` — cek layanan.
-- `GET /ips` — daftar izin IP yang masih aktif.
-- `GET /ips?include_expired=1` — daftar semua IP termasuk yang kedaluwarsa; wajib API key.
-- `GET /ips/{ip}` — mengambil satu IP dan status `active`; wajib API key.
+- `GET /ips` — daftar seluruh IP, termasuk yang kedaluwarsa; publik.
+- `GET /ips/{ip}` — mengambil satu IP dan status `active`; wajib API key atau session dashboard.
+- `POST /session` — login dashboard menggunakan header API key; membuat cookie session `HttpOnly` berlaku 10 tahun.
+- `GET /session` — memeriksa session dashboard aktif.
+- `DELETE /session` — logout dashboard dan menghapus cookie session.
 - `POST /ips` — menambah IP; wajib API key.
 - `PATCH /ips/{ip}` — mengubah `expired` atau `name`; wajib API key.
 - `DELETE /ips/{ip}` — menghapus satu IP; wajib API key.
@@ -120,20 +122,12 @@ curl -X POST https://API_DOMAIN/ips \\
 
 Semua field wajib diisi. `expired` harus berupa tanggal valid dengan format `YYYY-MM-DD`.
 
-### Ambil IP aktif — publik
+### Ambil seluruh IP — publik
 
-Tidak perlu API key:
+Tidak perlu API key. Respons selalu mencakup IP aktif dan yang sudah kedaluwarsa:
 
 ```bash
 curl https://API_DOMAIN/ips
-```
-
-Secara default, data yang tanggal `expired`-nya lebih kecil dari tanggal UTC hari ini tidak ditampilkan.
-
-Untuk semua data termasuk yang kedaluwarsa:
-
-```bash
-curl 'https://API_DOMAIN/ips?include_expired=1'
 ```
 
 ## Panel dashboard
@@ -144,16 +138,17 @@ Buka:
 https://API_DOMAIN/dashboard
 ```
 
-Panel menampilkan form login terlebih dahulu. Masukkan `API_KEY` yang disimpan sebagai Worker Secret. Setelah login berhasil, panel menyediakan:
+Panel menampilkan form login terlebih dahulu. Masukkan `API_KEY` yang disimpan sebagai Worker Secret. Setelah login berhasil, Worker menyimpan session dalam cookie `HttpOnly`, `Secure`, dan `SameSite=Strict` dengan masa berlaku 10 tahun. API key tidak disimpan di JavaScript, URL, atau browser storage. Session tetap berlaku saat halaman dimuat ulang sampai logout dipilih, cookie dihapus, atau `API_KEY` dirotasi.
 
-- daftar IP aktif;
-- tombol menampilkan IP kedaluwarsa;
+Setelah login berhasil, panel menyediakan:
+
+- daftar seluruh IP termasuk kedaluwarsa;
 - tambah IP;
 - edit tanggal expired dan nama;
 - hapus IP;
 - logout.
 
-API key hanya disimpan di memori halaman browser dan tidak disimpan ke database, URL, atau local storage. HTML shell `/dashboard` dapat diakses untuk menampilkan form login, tetapi data panel dan operasi pengelolaan tidak dapat digunakan tanpa API key yang valid.
+HTML shell `/dashboard` dapat diakses untuk menampilkan form login, tetapi data panel dan operasi pengelolaan hanya berjalan setelah API key valid membuat session cookie.
 
 ### Cek satu IP
 

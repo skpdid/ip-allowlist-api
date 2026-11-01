@@ -1,13 +1,14 @@
 const UPDATE_FIELDS = new Set(["expired", "name"]);
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 
-function response(data, status = 200) {
+function response(data, status = 200, extraHeaders = {}) {
   return new Response(JSON.stringify(data), {
     status,
     headers: {
       "content-type": "application/json; charset=utf-8",
       "cache-control": "no-store",
       "access-control-allow-origin": "*",
+      ...extraHeaders,
     },
   });
 }
@@ -28,11 +29,45 @@ function apiKey(request) {
   return request.headers.get("x-api-key") || "";
 }
 
-function authorized(request, env) {
-  return Boolean(env.API_KEY && apiKey(request) === env.API_KEY);
+const SESSION_COOKIE = "ip_allowlist_session";
+const SESSION_MAX_AGE = 60 * 60 * 24 * 3650; // 10 tahun
+
+function cookie(request, name) {
+  const prefix = `${name}=`;
+  return (request.headers.get("cookie") || "").split(";").map((part) => part.trim())
+    .find((part) => part.startsWith(prefix))?.slice(prefix.length) || "";
 }
 
+function constantTimeEqual(left, right) {
+  if (left.length !== right.length) return false;
+  let difference = 0;
+  for (let index = 0; index < left.length; index += 1) difference |= left.charCodeAt(index) ^ right.charCodeAt(index);
+  return difference === 0;
+}
 
+function hex(bytes) {
+  return [...new Uint8Array(bytes)].map((value) => value.toString(16).padStart(2, "0")).join("");
+}
+
+async function sessionToken(env) {
+  const key = await crypto.subtle.importKey(
+    "raw", new TextEncoder().encode(env.API_KEY || ""), { name: "HMAC", hash: "SHA-256" }, false, ["sign"],
+  );
+  return hex(await crypto.subtle.sign("HMAC", key, new TextEncoder().encode("ip-allowlist-dashboard-v1")));
+}
+
+async function authorized(request, env) {
+  if (!env.API_KEY) return false;
+  const supplied = apiKey(request);
+  if (supplied && constantTimeEqual(supplied, env.API_KEY)) return true;
+  const savedSession = cookie(request, SESSION_COOKIE);
+  return Boolean(savedSession) && constantTimeEqual(savedSession, await sessionToken(env));
+}
+
+async function sessionCookie(env, maxAge = SESSION_MAX_AGE) {
+  const token = await sessionToken(env);
+  return `${SESSION_COOKIE}=${token}; Max-Age=${maxAge}; Path=/; HttpOnly; Secure; SameSite=Strict`;
+}
 
 function validIp(ip) {
   // Validasi dasar IPv4/IPv6. Validasi detail dilakukan oleh API pemanggil bila diperlukan.
@@ -62,19 +97,19 @@ const DASHBOARD_HTML = `<!doctype html>
 <style>
 :root{color-scheme:dark;font-family:Inter,system-ui,sans-serif;background:#0b1120;color:#e5e7eb}body{margin:0;background:linear-gradient(135deg,#0b1120,#111827);min-height:100vh}.wrap{max-width:1000px;margin:auto;padding:28px 16px}.card{background:#172033;border:1px solid #263653;border-radius:16px;padding:20px;margin:14px 0;box-shadow:0 12px 35px #0003}h1{margin:0 0 6px;font-size:28px}h2{font-size:18px;margin-top:0}.muted{color:#94a3b8}.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px}label{display:grid;gap:6px;color:#cbd5e1;font-size:13px}input{box-sizing:border-box;width:100%;padding:11px;border-radius:9px;border:1px solid #3b4b69;background:#0f172a;color:#fff}button{border:0;border-radius:9px;padding:10px 14px;background:#4f46e5;color:white;font-weight:600;cursor:pointer}button.danger{background:#dc2626}button.secondary{background:#334155}button:hover{filter:brightness(1.15)}.actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:14px}table{width:100%;border-collapse:collapse;margin-top:14px}th,td{text-align:left;padding:11px 8px;border-bottom:1px solid #293750}th{color:#93c5fd;font-size:13px}.expired{color:#fca5a5}.active{color:#86efac}.status{min-height:22px;margin-top:10px}.empty{text-align:center;color:#94a3b8;padding:28px}@media(max-width:600px){table{font-size:13px}th:nth-child(3),td:nth-child(3){display:none}}
 </style></head>
-<body><main class="wrap"><div class="card" id="login"><h1>IP Allowlist</h1><div class="muted">Login diperlukan untuk membuka panel</div><form id="loginForm"><label>API key<input id="loginKey" type="password" autocomplete="off" required placeholder="Masukkan API_KEY"></label><div class="actions"><button>Login</button></div></form><div id="loginStatus" class="status"></div></div><section id="app" hidden><div class="card"><h1>IP Allowlist</h1><div class="muted">Panel pengelolaan IP</div><div class="actions"><button class="secondary" id="refresh">Muat ulang</button><button class="secondary" id="showExpired">Tampilkan kedaluwarsa</button><button class="secondary" id="logout">Logout</button></div><div id="status" class="status"></div></div>
+<body><main class="wrap"><div class="card" id="login"><h1>IP Allowlist</h1><div class="muted">Login diperlukan untuk membuka panel</div><form id="loginForm"><label>API key<input id="loginKey" type="password" autocomplete="off" required placeholder="Masukkan API_KEY"></label><div class="actions"><button>Login</button></div></form><div id="loginStatus" class="status"></div></div><section id="app" hidden><div class="card"><h1>IP Allowlist</h1><div class="muted">Panel pengelolaan IP</div><div class="actions"><button class="secondary" id="refresh">Muat ulang</button><button class="secondary" id="logout">Logout</button></div><div id="status" class="status"></div></div>
 <div class="card"><h2 id="formTitle">Tambah IP</h2><form id="form"><div class="grid"><label>IP<input id="ip" required placeholder="203.0.113.10"></label><label>Expired<input id="expired" type="date" required></label><label>Nama<input id="name" required placeholder="Server utama"></label></div><div class="actions"><button id="save">Simpan</button><button type="button" class="secondary" id="cancel" hidden>Batal</button></div></form></div>
 <div class="card"><h2>Daftar IP</h2><div style="overflow:auto"><table><thead><tr><th>IP</th><th>Expired</th><th>Nama</th><th>Status</th><th>Aksi</th></tr></thead><tbody id="rows"></tbody></table></div></div></section></main>
 <script>
-const state={editing:null,all:false,apiKey:""}; const $=id=>document.getElementById(id); const key=()=>state.apiKey;
+const state={editing:null}; const $=id=>document.getElementById(id);
 function msg(text,error=false){$("status").textContent=text;$("status").style.color=error?"#fca5a5":"#86efac"}
-async function load(){msg("Memuat...");const q=state.all?"?include_expired=1":"";try{const headers=state.all?{"X-API-Key":key()}:{};const r=await fetch("/ips"+q,{headers});const j=await r.json();if(!r.ok)throw Error(j.message);render(j.data||[]);msg((j.data||[]).length+" IP ditampilkan")}catch(e){msg(e.message,true)}}
+async function load(){msg("Memuat...");try{const r=await fetch("/ips",{cache:"no-store"});const j=await r.json();if(!r.ok)throw Error(j.message||"Gagal memuat data");render(j.data||[]);msg((j.data||[]).length+" IP ditampilkan")}catch(e){msg(e.message,true)}}
 function render(items){$("rows").innerHTML=items.length?items.map(x=>{const active=x.expired>=new Date().toISOString().slice(0,10);return '<tr><td><code>'+esc(x.ip)+'</code></td><td>'+esc(x.expired)+'</td><td>'+esc(x.name)+'</td><td class="'+(active?'active':'expired')+'">'+(active?'Aktif':'Kedaluwarsa')+'</td><td><button class="secondary edit" data-ip="'+esc(x.ip)+'" data-expired="'+esc(x.expired)+'" data-name="'+esc(x.name)+'">Edit</button> <button class="danger remove" data-ip="'+esc(x.ip)+'">Hapus</button></td></tr>'}).join(''): '<tr><td colspan="5" class="empty">Tidak ada data</td></tr>'}
 $("rows").addEventListener("click",e=>{const edit=e.target.closest(".edit");if(edit)editIp(edit.dataset.ip,edit.dataset.expired,edit.dataset.name);const remove=e.target.closest(".remove");if(remove)removeIp(remove.dataset.ip)})
 function esc(v){return String(v).replace(/[&<>'\"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;","'":"&#39;","\\\"":"&quot;"}[c]))}
 window.editIp=(ip,expired,name)=>{$("formTitle").textContent="Edit IP";$("ip").value=ip;$("ip").disabled=true;$("expired").value=expired;$("name").value=name;state.editing=ip;$("cancel").hidden=false;window.scrollTo({top:0,behavior:"smooth"})}
-window.removeIp=async ip=>{if(!confirm("Hapus IP "+ip+"?"))return;const r=await fetch("/ips/"+encodeURIComponent(ip),{method:"DELETE",headers:{"X-API-Key":key()}});const j=await r.json();msg(j.message,!r.ok);if(r.ok)load()}
-$("form").onsubmit=async e=>{e.preventDefault();const data={ip:$("ip").value.trim(),expired:$("expired").value,name:$("name").value.trim()};const edit=state.editing;const r=await fetch(edit?"/ips/"+encodeURIComponent(edit):"/ips",{method:edit?"PATCH":"POST",headers:{"Content-Type":"application/json","X-API-Key":key()},body:JSON.stringify(edit?{expired:data.expired,name:data.name}:data)});const j=await r.json();msg(j.message|| (r.ok?"Berhasil":"Gagal"),!r.ok);if(r.ok)reset();load()}
+window.removeIp=async ip=>{if(!confirm("Hapus IP "+ip+"?"))return;const r=await fetch("/ips/"+encodeURIComponent(ip),{method:"DELETE"});const j=await r.json();msg(j.message,!r.ok);if(r.ok)load()}
+$("form").onsubmit=async e=>{e.preventDefault();const data={ip:$("ip").value.trim(),expired:$("expired").value,name:$("name").value.trim()};const edit=state.editing;const r=await fetch(edit?"/ips/"+encodeURIComponent(edit):"/ips",{method:edit?"PATCH":"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(edit?{expired:data.expired,name:data.name}:data)});const j=await r.json();msg(j.message|| (r.ok?"Berhasil":"Gagal"),!r.ok);if(r.ok)reset();load()}
 function reset(){$("form").reset();$("ip").disabled=false;state.editing=null;$("formTitle").textContent="Tambah IP";$("cancel").hidden=true}
 async function login(e){
   e.preventDefault();
@@ -83,32 +118,30 @@ async function login(e){
   if(!candidate){status.textContent="API key wajib diisi";return false}
   status.textContent="Memeriksa API key...";
   try{
-    const r=await fetch("/health",{method:"GET",headers:{"X-API-Key":candidate},cache:"no-store"});
+    const r=await fetch("/session",{method:"POST",headers:{"X-API-Key":candidate},cache:"no-store"});
     const j=await r.json().catch(()=>({}));
     if(!r.ok || j.status!==true){status.textContent="API key tidak valid";return false}
-    state.apiKey=candidate;
+    $("loginKey").value="";
     $("login").hidden=true;
     $("app").hidden=false;
     await load();
   }catch(error){status.textContent="Gagal menghubungi Worker"}
   return false
 }
+async function restoreSession(){try{const r=await fetch("/session",{cache:"no-store"});const j=await r.json();if(!r.ok||j.status!==true)return;$("login").hidden=true;$("app").hidden=false;load()}catch(_){}}
 $("loginForm").addEventListener("submit",login);
-$("logout").addEventListener("click",()=>{state.apiKey="";$("app").hidden=true;$("login").hidden=false;$("loginKey").value="";$("loginStatus").textContent=""});
-$("cancel").addEventListener("click",reset);$("refresh").addEventListener("click",load);$("showExpired").addEventListener("click",()=>{state.all=!state.all;$("showExpired").textContent=state.all?"Sembunyikan kedaluwarsa":"Tampilkan kedaluwarsa";load()});
+$("logout").addEventListener("click",async()=>{await fetch("/session",{method:"DELETE"});$("app").hidden=true;$("login").hidden=false;$("loginKey").value="";$("loginStatus").textContent=""});
+$("cancel").addEventListener("click",reset);$("refresh").addEventListener("click",load);restoreSession();
 </script></body></html>`;
 
 async function getByIp(env, ip) {
   return env.DB.prepare("SELECT ip, expired, name FROM ip_allowlist WHERE ip = ?").bind(ip).first();
 }
 
-async function listIps(env, url) {
-  const includeExpired = url.searchParams.get("include_expired") === "1";
+async function listIps(env) {
   const result = await env.DB.prepare(
-    includeExpired
-      ? "SELECT ip, expired, name FROM ip_allowlist ORDER BY expired ASC, ip ASC"
-      : "SELECT ip, expired, name FROM ip_allowlist WHERE expired >= ? ORDER BY expired ASC, ip ASC",
-  ).bind(...(includeExpired ? [] : [todayUtc()])).all();
+    "SELECT ip, expired, name FROM ip_allowlist ORDER BY expired ASC, ip ASC",
+  ).all();
   return response({ status: true, data: result.results });
 }
 
@@ -161,25 +194,39 @@ export default {
       return new Response(null, { headers: { "access-control-allow-origin": "*", "access-control-allow-headers": "authorization,content-type,x-api-key", "access-control-allow-methods": "GET,POST,PATCH,DELETE,OPTIONS" } });
     }
     try {
-      if (url.pathname === "/ips" && request.method === "GET" && !url.search) return listIps(env, url);
-      if (request.method === "GET") {
-        const detailMatch = url.pathname.match(/^\/ips\/detail\/([^/]+)$/);
-        if (detailMatch) {
-          const ip = decodeURIComponent(detailMatch[1]);
-          if (!validIp(ip)) return response({ status: false, message: "Format IP tidak valid" }, 400);
-          const row = await getByIp(env, ip);
-          return row
-            ? response({ status: true, data: { ip: row.ip, expired: row.expired, name: row.name } })
-            : response({ status: false, message: "IP tidak ditemukan" }, 404);
+      // Endpoint publik: selalu mengembalikan seluruh IP, termasuk kedaluwarsa.
+      if (url.pathname === "/ips" && request.method === "GET" && !url.search) return listIps(env);
+      if (url.pathname === "/session" && request.method === "POST") {
+        const supplied = apiKey(request);
+        if (!env.API_KEY || !supplied || !constantTimeEqual(supplied, env.API_KEY)) {
+          return response({ status: false, message: "API key tidak valid" }, 401);
         }
+        return response({ status: true, message: "Login berhasil" }, 200, { "set-cookie": await sessionCookie(env) });
+      }
+      if (url.pathname === "/session" && request.method === "DELETE") {
+        return response({ status: true, message: "Logout berhasil" }, 200, {
+          "set-cookie": `${SESSION_COOKIE}=; Max-Age=0; Path=/; HttpOnly; Secure; SameSite=Strict`,
+        });
+      }
+      if (url.pathname === "/session" && request.method === "GET") {
+        return await authorized(request, env)
+          ? response({ status: true })
+          : response({ status: false, message: "Unauthorized" }, 401);
       }
       // Shell login dashboard harus dapat dibuka agar form API key bisa ditampilkan.
       // Seluruh data dan operasi panel tetap dikunci oleh API key.
       if (url.pathname === "/dashboard" && request.method === "GET") {
         return new Response(DASHBOARD_HTML, { headers: { "content-type": "text/html; charset=utf-8", "cache-control": "no-store" } });
       }
-      if (!authorized(request, env)) return response({ status: false, message: "Unauthorized" }, 401);
+      if (!await authorized(request, env)) return response({ status: false, message: "Unauthorized" }, 401);
       if (url.pathname === "/health" && request.method === "GET") return response({ status: true, service: "ip-allowlist-api" });
+      const detailMatch = url.pathname.match(/^\/ips\/detail\/([^/]+)$/);
+      if (request.method === "GET" && detailMatch) {
+        const ip = decodeURIComponent(detailMatch[1]);
+        if (!validIp(ip)) return response({ status: false, message: "Format IP tidak valid" }, 400);
+        const row = await getByIp(env, ip);
+        return row ? response({ status: true, data: row, active: isActive(row) }) : response({ status: false, message: "IP tidak ditemukan" }, 404);
+      }
       if (url.pathname === "/ips" && request.method === "POST") return addIp(request, env);
       if (url.pathname === "/ips" && request.method === "DELETE") {
         await env.DB.prepare("DELETE FROM ip_allowlist").run();
