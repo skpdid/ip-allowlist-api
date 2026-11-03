@@ -196,6 +196,15 @@ export default {
     try {
       // Endpoint publik: selalu mengembalikan seluruh IP, termasuk kedaluwarsa.
       if (url.pathname === "/ips" && request.method === "GET" && !url.search) return listIps(env);
+      const publicDetailMatch = url.pathname.match(/^\/ips\/details\/([^/]+)$/);
+      if (request.method === "GET" && publicDetailMatch) {
+        const ip = decodeURIComponent(publicDetailMatch[1]);
+        if (!validIp(ip)) return response({ status: false, message: "Format IP tidak valid" }, 400);
+        const row = await getByIp(env, ip);
+        return row
+          ? response({ status: true, data: row, active: isActive(row) })
+          : response({ status: false, message: "IP tidak ditemukan" }, 404);
+      }
       if (url.pathname === "/session" && request.method === "POST") {
         const supplied = apiKey(request);
         if (!env.API_KEY || !supplied || !constantTimeEqual(supplied, env.API_KEY)) {

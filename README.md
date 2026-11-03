@@ -15,6 +15,7 @@ API menggunakan Cloudflare D1 dengan binding `DB`. Endpoint baca daftar publik t
 Satu-satunya endpoint publik adalah:
 
 - `GET /ips` — seluruh IP yang terdaftar, termasuk yang sudah kedaluwarsa, tanpa API key.
+- `GET /ips/details/{ip}` — detail satu IP dan status `active`, tanpa API key.
 
 Semua endpoint lain, termasuk `/dashboard` (data dan operasi panel), `GET /health`, `GET /ips/{ip}`, `POST`, `PATCH`, dan `DELETE`, wajib menggunakan API key atau session dashboard yang valid.
 
@@ -32,6 +33,7 @@ X-API-Key: API_KEY
 
 - `GET /health` — cek layanan.
 - `GET /ips` — daftar seluruh IP, termasuk yang kedaluwarsa; publik.
+- `GET /ips/details/{ip}` — mengambil satu IP dan status `active`; publik.
 - `GET /ips/{ip}` — mengambil satu IP dan status `active`; wajib API key atau session dashboard.
 - `POST /session` — login dashboard menggunakan header API key; membuat cookie session `HttpOnly` berlaku 10 tahun.
 - `GET /session` — memeriksa session dashboard aktif.
